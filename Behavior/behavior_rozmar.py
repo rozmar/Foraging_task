@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime
 
 def loadcsvdata(bigtable=pd.DataFrame(), projectdir = Path('/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects')):
+    bigtable_orig = bigtable
 #bigtable=pd.DataFrame()
 #projectdir = Path('/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects')
 #projectdir = Path('/home/rozmar/Data/Behavior/Projects')
@@ -12,6 +13,7 @@ def loadcsvdata(bigtable=pd.DataFrame(), projectdir = Path('/home/rozmar/Network
         projectdir = Path(projectdir)
     if len(bigtable) > 0:
         sessionnamessofar = bigtable['session'].unique()
+        sessionnamessofar = sessionnamessofar[:-1] # we keep reloading the last one
     else:
         sessionnamessofar = []
     projectnames = list()
@@ -36,7 +38,7 @@ def loadcsvdata(bigtable=pd.DataFrame(), projectdir = Path('/home/rozmar/Network
                                     df = pd.read_csv(csvfilename,delimiter=';',skiprows = 6)
                                     df = df[df['TYPE']!='|'] # delete empty rows
                                     df = df[df['TYPE']!= 'During handling of the above exception, another exception occurred:'] # delete empty rows
-                                    df = df.reset_index() # resetting indexes after deletion
+                                    df = df.reset_index(drop=True) # resetting indexes after deletion
                                     df['PC-TIME']=df['PC-TIME'].apply(lambda x : datetime.strptime(x,'%Y-%m-%d %H:%M:%S.%f')) # converting string time to datetime
                                     tempstr = df['+INFO'][df['MSG']=='CREATOR-NAME'].values[0]
                                     experimenter = tempstr[2:tempstr[2:].find('"')+2]
@@ -71,7 +73,13 @@ def loadcsvdata(bigtable=pd.DataFrame(), projectdir = Path('/home/rozmar/Network
                                         d={}
                                         exec('variables = ' + df['MSG'][variableidx+2].values[0], d)
                                         for varname in d['variables'].keys():
-                                            df['var:'+varname] = d['variables'][varname]
+                                            if isinstance(d['variables'][varname], (list,)):
+                                                templist = list()
+                                                for idx in range(0,len(df)):
+                                                    templist.append(d['variables'][varname])
+                                                df['var:'+varname]=templist
+                                            else:
+                                                df['var:'+varname] = d['variables'][varname]
                                     # saving variables (if any)
                                     variableidx = (df[df['MSG'] == 'LickportMotors:']).index.to_numpy()
                                     if len(variableidx)>0:
@@ -85,9 +93,13 @@ def loadcsvdata(bigtable=pd.DataFrame(), projectdir = Path('/home/rozmar/Network
                                         for colname in df.columns:
                                             if colname not in bigtable.columns:
                                                 bigtable[colname]=np.NaN
+                                        for colname in bigtable.columns:
+                                            if colname not in df.columns:
+                                                df[colname]=np.NaN
                                         bigtable = bigtable.append(df)
-                                            
-    bigtable = bigtable.reset_index()                                    
+    bigtable = bigtable.drop_duplicates(subset=['TYPE', 'PC-TIME', 'MSG', '+INFO'])
+    if len(bigtable) != len(bigtable_orig):
+        bigtable = bigtable.reset_index(drop=True)                                
     return bigtable
 #%%
 #bigtable = loadcsvdata(projectdir = '/home/rozmar/Data/Behavior/Projects')

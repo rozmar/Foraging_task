@@ -1,17 +1,19 @@
 import behavior_rozmar as behavior_rozmar
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QGroupBox, QDialog, QVBoxLayout, QGridLayout, QComboBox, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton,  QLineEdit, QHBoxLayout, QGroupBox, QDialog, QVBoxLayout, QGridLayout, QComboBox, QSizePolicy
 from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtCore import pyqtSlot, QTimer
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 
 import numpy as np
+import pandas as pd
 import re
+import time as time
+from datetime import datetime
 class App(QDialog):
-
     def __init__(self):
         super().__init__()
         self.dirs = dict()
@@ -21,15 +23,28 @@ class App(QDialog):
         self.top = 10
         self.width = 1024
         self.height = 768
-        
-        
-        self.dirs['projectdir'] = '/home/rozmar/Data/Behavior/Projects'
+
+        self.dirs['projectdir'] = '/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'#'/home/rozmar/Data/Behavior/Projects'
         self.loadthedata()
         self.initUI()
         
+        self.timer  = QTimer(self)
+        self.timer.setInterval(3000)          # Throw event timeout with an interval of 1000 milliseconds
+        self.timer.timeout.connect(self.reloadthedata) # each time timer counts a second, call self.blink
+        self.timer.start()
+        
     def loadthedata(self):
         self.data = behavior_rozmar.loadcsvdata(projectdir = self.dirs['projectdir'])
-        #self.filterthedata()
+        print('data reloaded')
+        #print(time.perf_counter())
+    
+    @pyqtSlot()    
+    def reloadthedata(self):
+        self.data = behavior_rozmar.loadcsvdata(self.data, projectdir = self.dirs['projectdir'])
+        self.filterthedata()
+        
+        print('data reloaded')
+        print(time.perf_counter())    
         
     def filterthedata(self,lastselected = ' '):
         filterorder = ['project','experiment','setup','session','subject','experimenter']
@@ -38,6 +53,8 @@ class App(QDialog):
             filterstring = str(self.handles['filter_'+filternow].currentText())
             if not re.findall('all',filterstring):
                 self.data_now = self.data_now[self.data_now[filternow] == filterstring]
+        self.handles['axes1'].plot_licks_and_rewards(self.data_now,self.handles)
+        self.handles['axes2'].plot_bias(self.data_now,self.handles)
 # =============================================================================
 #         data = self.data 
 #         handlenames = self.handles.keys()
@@ -57,6 +74,7 @@ class App(QDialog):
         
         windowLayout = QVBoxLayout()
         windowLayout.addWidget(self.horizontalGroupBox_filter)
+        windowLayout.addWidget(self.horizontalGroupBox_plot_settings)
         windowLayout.addWidget(self.horizontalGroupBox_axes)
         self.setLayout(windowLayout)
         
@@ -96,7 +114,6 @@ class App(QDialog):
         layout.addWidget(self.handles['filter_session'],0,3)
         layout.addWidget(self.handles['filter_subject'],0,4)
         layout.addWidget(self.handles['filter_experimenter'],0,5)
-        
         self.horizontalGroupBox_filter.setLayout(layout)
         
         self.horizontalGroupBox_axes = QGroupBox("plots")
@@ -107,7 +124,16 @@ class App(QDialog):
         layout_axes.addWidget(self.handles['axes2'],1,0)
         self.horizontalGroupBox_axes.setLayout(layout_axes)
         
+        self.horizontalGroupBox_plot_settings = QGroupBox("Plot settings")
+        layout_plot_settings = QGridLayout()
+        self.handles['plot_timeback'] = QLineEdit(self)
+        self.handles['plot_timeback'].setText('Time back to plot (seconds)')
+        layout_plot_settings.addWidget(self.handles['plot_timeback'],0,0)
         
+        self.handles['plot_timeback_runningwindow'] = QLineEdit(self)
+        self.handles['plot_timeback_runningwindow'].setText('Number of segments in bias plot (integer)')
+        layout_plot_settings.addWidget(self.handles['plot_timeback_runningwindow'],0,1)
+        self.horizontalGroupBox_plot_settings.setLayout(layout_plot_settings)
         
         
 class PlotCanvas(FigureCanvas):
@@ -125,12 +151,120 @@ class PlotCanvas(FigureCanvas):
         FigureCanvas.updateGeometry(self)
         #self.plot()
 
+    def minethedata(self,data):
+        idxes = dict()
+        times = dict()
+        idxes['lick_L'] = data['var:WaterPort_L_ch_in'] == data['+INFO']
+        times['lick_L'] = data['PC-TIME'][idxes['lick_L']]
+        idxes['choice_L'] = (data['MSG'] == 'Choice_L') & (data['TYPE'] == 'TRANSITION')
+        times['choice_L'] = data['PC-TIME'][idxes['choice_L']]
+        idxes['reward_L'] = (data['MSG'] == 'Reward_L') & (data['TYPE'] == 'TRANSITION')
+        times['reward_L'] = data['PC-TIME'][idxes['reward_L']]
+        idxes['lick_R'] = data['var:WaterPort_R_ch_in'] == data['+INFO']
+        times['lick_R'] = data['PC-TIME'][idxes['lick_R']]
+        idxes['choice_R'] = (data['MSG'] == 'Choice_R') & (data['TYPE'] == 'TRANSITION')
+        times['choice_R'] = data['PC-TIME'][idxes['choice_R']]
+        idxes['reward_R'] = (data['MSG'] == 'Reward_R') & (data['TYPE'] == 'TRANSITION')
+        times['reward_R'] = data['PC-TIME'][idxes['reward_R']]
+        idxes['trialstart'] = data['TYPE'] == 'TRIAL'
+        times['trialstart'] = data['PC-TIME'][idxes['trialstart']]
+        idxes['trialend'] = data['TYPE'] == 'END-TRIAL'
+        times['trialend'] = data['PC-TIME'][idxes['trialend']]
+        idxes['GoCue'] = (data['MSG'] == 'GoCue') & (data['TYPE'] == 'TRANSITION')
+        times['GoCue'] = data['PC-TIME'][idxes['GoCue']]
+        return times, idxes
+    
+    def plot_licks_and_rewards(self,data = [],handles = []):
+        if type(data) == pd.core.frame.DataFrame:
+            times,idxes = self.minethedata(data)
+            if  handles and handles['plot_timeback'].text().isnumeric():
+                alltimes = []
+                for timeskey in times.keys(): # finding endtime
+                   if len(alltimes) > 0:
+                       alltimes.append(times[timeskey])
+                   else:
+                       alltimes = times[timeskey]
+                endtime = max(alltimes)
+                for timeskey in times.keys():
+                    timediffs = (times[timeskey] - endtime).to_numpy()
+                    neededidx = (timediffs/np.timedelta64(1,'s')+int(handles['plot_timeback'].text()))>0
+                    times[timeskey]= times[timeskey][neededidx]
+                  #  idxes[timeskey]= idxes[timeskey][neededidx]
+                #print(neededidx )
+            self.axes.cla()
+            self.axes.plot(times['trialstart'], np.zeros(len(times['trialstart']))+.5, 'b|', markersize = 150)
+            self.axes.plot(times['trialend'], np.zeros(len(times['trialend']))+.5, 'r|', markersize = 150)
+            self.axes.plot(times['GoCue'], np.zeros(len(times['GoCue']))+.5, 'g|', markersize = 100)
+            
+            self.axes.plot(times['lick_L'], np.zeros(len(times['lick_L'])), 'k|')
+            self.axes.plot(times['lick_R'], np.zeros(len(times['lick_R']))+1, 'k|')
+            self.axes.plot(times['choice_L'], np.zeros(len(times['choice_L']))+.2, 'go', markerfacecolor = (1, 1, 1, 1))
+            self.axes.plot(times['choice_R'], np.zeros(len(times['choice_R']))+.8, 'go',markerfacecolor = (1, 1, 1, 1))
+            self.axes.plot(times['reward_L'], np.zeros(len(times['reward_L']))+.2, 'go', markerfacecolor = (0, 1, 0, 1))
+            self.axes.plot(times['reward_R'], np.zeros(len(times['reward_R']))+.8, 'go',markerfacecolor = (0, 1, 0, 1))
+            self.axes.set_title('Lick and reward history')
+            self.draw()
+            
+    def plot_bias(self,data = [],handles = []):
+        if type(data) == pd.core.frame.DataFrame:
+            times,idxes = self.minethedata(data)
+            alltimes = []       
+            for timeskey in times.keys(): # finding endtime and starttime
+               if len(alltimes) > 0:
+                   alltimes.append(times[timeskey])
+               else:
+                   alltimes = times[timeskey]
+            startime = min(alltimes) 
+            endtime = max(alltimes)
+            if  handles and handles['plot_timeback'].text().isnumeric():
+                startime = endtime - pd.to_timedelta(int(handles['plot_timeback'].text()),'s')
+# =============================================================================
+#                 print(startime)
+#                 for timeskey in times.keys():
+#                     timediffs = (times[timeskey] - endtime).to_numpy()
+#                     neededidx = (timediffs/np.timedelta64(1,'s'))>0
+#                     times[timeskey]= times[timeskey][neededidx]
+#                 alltimes = []       
+#                 for timeskey in times.keys(): # finding endtime and starttime
+#                    if len(alltimes) > 0:
+#                        alltimes.append(times[timeskey])
+#                    else:
+#                        alltimes = times[timeskey]
+#                 startime = min(alltimes) 
+#                 endtime = max(alltimes)    
+# =============================================================================
+            if  handles and handles['plot_timeback_runningwindow'].text().isnumeric(): # determining averaging window size
+                numerofpoints = int(handles['plot_timeback_runningwindow'].text())
+            else:
+                numerofpoints = 10
+            
+            steptime = (endtime-startime)/numerofpoints
+            timerange = pd.date_range(start = startime, end = endtime, periods = numerofpoints*10) #freq = 's' *10
+            print(startime , endtime)
+            lick_left_num = np.zeros(len(timerange))
+            lick_right_num  = np.zeros(len(timerange))
+            reward_left_num = np.zeros(len(timerange))
+            reward_right_num = np.zeros(len(timerange))
+            for idx,timenow in enumerate(timerange):
+                lick_left_num[idx] = sum((timenow+steptime > times['lick_L']) & (timenow-steptime<times['lick_L']))
+                lick_right_num[idx] = sum((timenow+steptime > times['lick_R']) & (timenow-steptime<times['lick_R']))
+                reward_left_num[idx] = sum((timenow+steptime > times['choice_L']) & (timenow-steptime<times['choice_L']))
+                reward_right_num[idx] = sum((timenow+steptime > times['choice_R']) & (timenow-steptime<times['choice_R']))
 
-    def plot(self,data = []):
+            bias_lick_R = lick_right_num/(lick_right_num+lick_left_num)
+            bias_reward_R = reward_right_num/(reward_right_num+reward_left_num)
+            self.axes.cla()
+            self.axes.plot(timerange, bias_lick_R, 'k-')
+            self.axes.plot(timerange, bias_reward_R, 'g-')
+            self.axes.set_ylim(-.1,1.1)
+# =============================================================================
+#             self.axes.plot(timerange, lick_left_num, 'b-')
+#             self.axes.plot(timerange, lick_right_num, 'r-')
+# =============================================================================
+            self.axes.set_title('Lick and reward bias')
+            self.draw()
+            
         
-        self.axes.plot(data, 'r-')
-        self.axes.set_title('PyQt Matplotlib Example')
-        self.draw()
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = App()
