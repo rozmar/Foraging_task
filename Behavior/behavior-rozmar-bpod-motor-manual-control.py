@@ -103,8 +103,8 @@ class App(QDialog):
             Left_Right_device = zaber_serial.BinaryDevice(ser,2)
             pos_Forward_Backward = Forward_Backward_device.get_position()
             pos_Left_Right = Left_Right_device.get_position()
-        self.handles['motor_RC_edit'].setText(pos_Forward_Backward)
-        self.handles['motor_LAT_edit'].setText(pos_Left_Right)
+        self.handles['motor_RC_edit'].setText(str(pos_Forward_Backward))
+        self.handles['motor_LAT_edit'].setText(str(pos_Left_Right))
         
     def zaber_move_Lat(self):
         if 	self.handles['motor_LAT_edit'].text().isnumeric:
@@ -141,7 +141,7 @@ class App(QDialog):
     def zaber_move_left(self):
         if 	self.handles['motor_step_edit'].text().isnumeric:
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
-                moverel_cmd = zaber_serial.BinaryCommand(2,21,int(self.handles['motor_step_edit'].text()))
+                moverel_cmd = zaber_serial.BinaryCommand(2,21,-1*int(self.handles['motor_step_edit'].text()))
                 ser.write(moverel_cmd)
                 time.sleep(1)
         self.zaber_refresh()
@@ -149,7 +149,7 @@ class App(QDialog):
     def zaber_move_right(self):
         if 	self.handles['motor_step_edit'].text().isnumeric:
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
-                moverel_cmd = zaber_serial.BinaryCommand(2,21,-1*int(self.handles['motor_step_edit'].text()))
+                moverel_cmd = zaber_serial.BinaryCommand(2,21,1*int(self.handles['motor_step_edit'].text()))
                 ser.write(moverel_cmd)
                 time.sleep(1)
         self.zaber_refresh()
