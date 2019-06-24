@@ -5,7 +5,15 @@ from PyQt5.QtCore import pyqtSlot
 
 import zaber.serial as zaber_serial
 import time
+
+from pybpodapi.bpod import Bpod
+from pybpodapi.state_machine import StateMachine
+from pybpodapi.bpod.hardware.events import EventName
+from pybpodapi.bpod.hardware.output_channels import OutputChannel
+from pybpodapi.com.messaging.trial import Trial
+
 variables = {'comport_motor' : 'COM7',
+             'waittime': .01,
              }
 class App(QDialog):
 
@@ -70,9 +78,7 @@ class App(QDialog):
         self.handles['motor_left'].clicked.connect(self.zaber_move_right)
         
         self.Motorcontrol.setLayout(layout_motor)
-        
-        
-        
+
         self.bpodcontrol = QGroupBox("bpod Control")
         layout_bpod = QGridLayout()
         self.handles['bpod_Connect'] = QPushButton('Connect to bpod')
@@ -111,7 +117,7 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moveabs_cmd = zaber_serial.BinaryCommand(2,20,int(self.handles['motor_LAT_edit'].text()))
                 ser.write(moveabs_cmd)
-                time.sleep(1)
+                time.sleep(variables['waittime'])
         self.zaber_refresh()
 		
     def zaber_move_RC(self):
@@ -119,7 +125,7 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moveabs_cmd = zaber_serial.BinaryCommand(1,20,int(self.handles['motor_RC_edit'].text()))
                 ser.write(moveabs_cmd)
-                time.sleep(1)
+                time.sleep(variables['waittime'])
         self.zaber_refresh()
         
     def zaber_move_forward(self):
@@ -127,7 +133,7 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moverel_cmd = zaber_serial.BinaryCommand(1,21,-1*int(self.handles['motor_step_edit'].text()))
                 ser.write(moverel_cmd)
-                time.sleep(1)
+                time.sleep(variables['waittime'])
         self.zaber_refresh()
         print('forward')
     def zaber_move_back(self):
@@ -135,7 +141,7 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moverel_cmd = zaber_serial.BinaryCommand(1,21,int(self.handles['motor_step_edit'].text()))
                 ser.write(moverel_cmd)
-                time.sleep(1)
+                time.sleep(variables['waittime'])
         self.zaber_refresh()
         print('back')
     def zaber_move_left(self):
@@ -143,7 +149,7 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moverel_cmd = zaber_serial.BinaryCommand(2,21,-1*int(self.handles['motor_step_edit'].text()))
                 ser.write(moverel_cmd)
-                time.sleep(1)
+                time.sleep(variables['waittime'])
         self.zaber_refresh()
         print('left')
     def zaber_move_right(self):
@@ -151,7 +157,7 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moverel_cmd = zaber_serial.BinaryCommand(2,21,1*int(self.handles['motor_step_edit'].text()))
                 ser.write(moverel_cmd)
-                time.sleep(1)
+                time.sleep(variables['waittime'])
         self.zaber_refresh()
         print('right')
         

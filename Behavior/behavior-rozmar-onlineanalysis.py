@@ -24,12 +24,12 @@ class App(QDialog):
         self.width = 1024
         self.height = 768
 
-        self.dirs['projectdir'] =  'C:\\Users\\labadmin\\Documents\\Pybpod\\Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'##'/home/rozmar/Data/Behavior/Projects'#
+        self.dirs['projectdir'] =  'C:\\Users\\labadmin\\Documents\\Pybpod\\Projects'#'/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'#
         self.loadthedata()
         self.initUI()
         
         self.timer  = QTimer(self)
-        self.timer.setInterval(5000)          # Throw event timeout with an interval of 1000 milliseconds
+        self.timer.setInterval(3000)          # Throw event timeout with an interval of 1000 milliseconds
         self.timer.timeout.connect(self.reloadthedata) # each time timer counts a second, call self.blink
         self.timer.start()
         
@@ -280,7 +280,7 @@ class PlotCanvas(FigureCanvas):
             self.axes.set_ylim(-.1,1.1)
             self.axes.set_yticks([0,1])
             self.axes.set_yticklabels(['Left', 'Right'])
-            self.axes.legend()
+            #self.axes.legend()
 # =============================================================================
 #             self.axes.plot(timerange, lick_left_num, 'b-')
 #             self.axes.plot(timerange, lick_right_num, 'r-')
