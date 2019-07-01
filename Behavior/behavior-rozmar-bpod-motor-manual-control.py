@@ -51,16 +51,28 @@ class App(QDialog):
         self.handles['motor_refresh'].clicked.connect(self.zaber_refresh) 
         layout_motor.addWidget(self.handles['motor_refresh'],0,0)
         
-        layout_motor.addWidget(QLabel('Rostro-caudal:'),0,1)
+        layout_motor.addWidget(QLabel('Rostro-caudal position:'),0,1)
 
         self.handles['motor_RC_edit'] = QLineEdit('')
         layout_motor.addWidget(self.handles['motor_RC_edit'],0,2)
         self.handles['motor_RC_edit'].returnPressed.connect(self.zaber_move_RC)
-        layout_motor.addWidget(QLabel('Lateral:'),0,3)
+        
+        layout_motor.addWidget(QLabel('Lateral position:'),0,3)
 		
         self.handles['motor_LAT_edit'] = QLineEdit('')
         self.handles['motor_LAT_edit'].returnPressed.connect(self.zaber_move_Lat)
         layout_motor.addWidget(self.handles['motor_LAT_edit'],0,4)
+        
+        layout_motor.addWidget(QLabel('Speed:'),1,1)
+        self.handles['motor_RC_speed_edit'] = QLineEdit('')
+        layout_motor.addWidget(self.handles['motor_RC_speed_edit'],1,2)
+        self.handles['motor_RC_speed_edit'].returnPressed.connect(lambda: self.zaber_set_speed(1))
+        
+        layout_motor.addWidget(QLabel('Speed:'),1,3)
+        self.handles['motor_LAT_speed_edit'] = QLineEdit('')
+        layout_motor.addWidget(self.handles['motor_LAT_speed_edit'],1,4)
+        self.handles['motor_LAT_speed_edit'].returnPressed.connect(lambda: self.zaber_set_speed(2))
+        
         
         self.handles['motor_step_edit'] = QLineEdit('5000')
         layout_motor.addWidget(self.handles['motor_step_edit'],1,6)
@@ -109,9 +121,19 @@ class App(QDialog):
             Left_Right_device = zaber_serial.BinaryDevice(ser,2)
             pos_Forward_Backward = Forward_Backward_device.get_position()
             pos_Left_Right = Left_Right_device.get_position()
+            
+            getspeed_cmd = zaber_serial.BinaryCommand(1,53,42)
+            ser.write(getspeed_cmd)
+            speed1 = ser.read()
+            getspeed_cmd = zaber_serial.BinaryCommand(2,53,42)
+            ser.write(getspeed_cmd)
+            speed2 = ser.read()
+           
+            
         self.handles['motor_RC_edit'].setText(str(pos_Forward_Backward))
         self.handles['motor_LAT_edit'].setText(str(pos_Left_Right))
-        
+        self.handles['motor_RC_speed_edit'].setText(str(speed1.data))
+        self.handles['motor_LAT_speed_edit'].setText(str(speed2.data))
     def zaber_move_Lat(self):
         if 	self.handles['motor_LAT_edit'].text().isnumeric:
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
@@ -125,6 +147,19 @@ class App(QDialog):
             with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
                 moveabs_cmd = zaber_serial.BinaryCommand(1,20,int(self.handles['motor_RC_edit'].text()))
                 ser.write(moveabs_cmd)
+                time.sleep(variables['waittime'])
+        self.zaber_refresh()
+        
+    def zaber_set_speed(self,ch):
+        if 	self.handles['motor_RC_edit'].text().isnumeric:
+            if ch == 1:
+                data = int(self.handles['motor_RC_speed_edit'].text())
+            elif ch == 2:
+                data = int(self.handles['motor_LAT_speed_edit'].text())
+                
+            with zaber_serial.BinarySerial(variables['comport_motor']) as ser:
+                setspeed_cmd = zaber_serial.BinaryCommand(ch,42,data)
+                ser.write(setspeed_cmd)
                 time.sleep(variables['waittime'])
         self.zaber_refresh()
         

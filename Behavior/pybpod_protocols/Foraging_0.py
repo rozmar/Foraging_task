@@ -28,13 +28,15 @@ for i in range(blocknum): # reward rate pairs are chosen randomly
     p_reward_R.append(reward_ratio_pair[1])
 
 variables = {
-        'ValveOpenTime_L' : .04,#0.05,#
-        'ValveOpenTime_R' : .03,#0.06,#
-        'Trialnumber_in_block' : 5,
-        'reward_probabilities_R' : [1,0,1],#,[.7,.3,.6,.4,.5],#[.7,.8,.2,.7,.3,.6,.4,.5],#[1,.9,0,.8,0,.7,0], #p_reward_R,#[.7,.6,,]
-        'reward_probabilities_L' : [1,1,0],#[.3,.7,.4,.6,.5], #[.7,.2,.8,.3,.7,.4,.6,.5], #[1,0,.9,0,.8,0,.7],#p_reward_L,#[.7,0,.7,0,.6,0,.5], #[.4,.1,,]
-        'baseline_time' : 1, # time needed for mouse not to lick before GO cue
-        'baseline_time_min' : .5, # minimum value
+        'ValveOpenTime_L' : .031,#.025,#0.05,#
+        'ValveOpenTime_R' : .035,#.029,#0.06,#
+        'Trialnumber_in_block' : 15,
+        'Trialnumber_in_block_SD' : 3,
+        'Trialnumber_in_block_min' : 10,
+        'reward_probabilities_R' : [1,0,1,0,1,0,1,0,1,0,1,0,1,0],#,[.7,.3,.6,.4,.5],#[.7,.8,.2,.7,.3,.6,.4,.5],#[1,.9,0,.8,0,.7,0], #p_reward_R,#[.7,.6,,]
+        'reward_probabilities_L' : [0,1,0,1,0,1,0,1,0,1,0,1,0,1],#[.3,.7,.4,.6,.5], #[.7,.2,.8,.3,.7,.4,.6,.5], #[1,0,.9,0,.8,0,.7],#p_reward_L,#[.7,0,.7,0,.6,0,.5], #[.4,.1,,]
+        'baseline_time' : 2, # time needed for mouse not to lick before GO cue
+        'baseline_time_min' : 1, # minimum value
         'baseline_time_sd' : 1, # randomization parameter
         'GoCue_ch' : OutputChannel.PWM5,
         'GoCue_time' : 2, # time for the mouse to lick
@@ -53,8 +55,10 @@ variables = {
         'motor_retract_waterport' : True,
         'accumulate_reward': True,
         'auto_water': True,
-        'auto_water_time_multiplier': 0.5,
-        'early_lick_punishment': True,
+        'auto_water_time_multiplier': 0.75,
+        'auto_water_min_unrewarder_trials_in_a_row': 6,
+        'auto_train_min_rewarded_trial_num': 10,
+        'early_lick_punishment': False,
 }
 reward_L_accumulated = False
 
@@ -111,7 +115,15 @@ print('Variables:', variables)
 
 # ----> Start the task
 for blocki , (p_R , p_L) in enumerate(zip(variables['reward_probabilities_R'], variables['reward_probabilities_L'])):
-    for triali in range(variables['Trialnumber_in_block']):  # Main loop
+    rewarded_trial_num = 0
+    unrewarded_trial_num_in_a_row = 0
+    triali = -1
+    #for triali in range(variables['Trialnumber_in_block']):  # Main loop
+    trialnum_now = np.random.normal(variables['Trialnumber_in_block'],variables['Trialnumber_in_block_SD'])
+    if trialnum_now < variables['Trialnumber_in_block_min']:
+            trialnum_now = variables['Trialnumber_in_block_min'] 
+    while triali < variables['Trialnumber_in_block'] or rewarded_trial_num < variables['auto_train_min_rewarded_trial_num']:
+        triali += 1
         reward_L = np.random.uniform(0.,1.) < p_L
         reward_R = np.random.uniform(0.,1.) < p_R
         iti_now = np.random.normal(variables['iti_base'],variables['iti_sd'])
@@ -139,7 +151,7 @@ for blocki , (p_R , p_L) in enumerate(zip(variables['reward_probabilities_R'], v
         	state_change_conditions={EventName.Tup: 'Start'},
         	output_actions = [])
         # autowater comes here!!
-        if variables['auto_water']:
+        if variables['auto_water'] and unrewarded_trial_num_in_a_row >= variables['auto_water_min_unrewarder_trials_in_a_row']:
             sma.add_state(
             	state_name='GoCue',
             	state_timer=0,
@@ -260,6 +272,11 @@ for blocki , (p_R , p_L) in enumerate(zip(variables['reward_probabilities_R'], v
         reward_L_consumed = not np.isnan(trialdata['States timestamps']['Reward_L'][0][0])
         reward_R_consumed = not np.isnan(trialdata['States timestamps']['Reward_R'][0][0])
         
+        if reward_L_consumed or reward_R_consumed:
+            rewarded_trial_num += 1
+            unrewarded_trial_num_in_a_row = 0
+        else:
+            unrewarded_trial_num_in_a_row += 1
         if variables['accumulate_reward']:
             if reward_L_consumed:
                 reward_L_accumulated = False

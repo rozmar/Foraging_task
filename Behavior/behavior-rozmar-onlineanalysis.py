@@ -1,6 +1,6 @@
 import behavior_rozmar as behavior_rozmar
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton,  QLineEdit, QHBoxLayout, QGroupBox, QDialog, QVBoxLayout, QGridLayout, QComboBox, QSizePolicy
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton,  QLineEdit, QCheckBox, QHBoxLayout, QGroupBox, QDialog, QVBoxLayout, QGridLayout, QComboBox, QSizePolicy
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import pyqtSlot, QTimer
 
@@ -13,6 +13,9 @@ import pandas as pd
 import re
 import time as time
 from datetime import datetime
+
+
+defpath = '/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects' #'C:\\Users\\labadmin\\Documents\\Pybpod\\Projects'#''/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'#
 class App(QDialog):
     def __init__(self):
         super().__init__()
@@ -23,38 +26,71 @@ class App(QDialog):
         self.top = 10
         self.width = 1024
         self.height = 768
-
-        self.dirs['projectdir'] =  'C:\\Users\\labadmin\\Documents\\Pybpod\\Projects'#'/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'#
-        self.loadthedata()
+        self.dirs['projectdir'] =  defpath
+        self.loaddirectorystructure()
+        #self.loadthedata()
+        self.data = None
         self.initUI()
         
         self.timer  = QTimer(self)
         self.timer.setInterval(3000)          # Throw event timeout with an interval of 1000 milliseconds
         self.timer.timeout.connect(self.reloadthedata) # each time timer counts a second, call self.blink
-        self.timer.start()
+        
+    def loaddirectorystructure(self):
+        dirstructure, projectnames, experimentnames, setupnames, sessionnames = behavior_rozmar.loaddirstucture(projectdir = defpath)
+        self.dirstruct = dirstructure
+        self.alldirs = dict()
+        self.alldirs['projectnames'] = projectnames
+        self.alldirs['experimentnames'] = experimentnames
+        self.alldirs['setupnames'] = setupnames
+        self.alldirs['sessionnames'] = sessionnames
+        
+        print('directory structure reloaded')
         
     def loadthedata(self):
-        self.data = behavior_rozmar.loadcsvdata(projectdir = self.dirs['projectdir'])
+        selected = dict()
+        filterorder = ['project','experiment','setup','session']
+        for filternow in filterorder:
+            filterstring = str(self.handles['filter_'+filternow].currentText())
+            if not re.findall('all',filterstring):
+                selected[filternow] = filterstring
+            else:
+                selected[filternow] = None
+
+        self.data = behavior_rozmar.loadcsvdata(self.data,
+                                                projectdir = self.dirs['projectdir'],
+                                                projectnames_needed = selected['project'],
+                                                experimentnames_needed = selected['experiment'],
+                                                setupnames_needed = selected['setup'],
+                                                sessionnames_needed = selected['session'])
+        self.updateUI()
         print('data reloaded')
         #print(time.perf_counter())
     
     @pyqtSlot()    
     def reloadthedata(self):
-        self.data = behavior_rozmar.loadcsvdata(self.data, projectdir = self.dirs['projectdir'])
+        #self.data = behavior_rozmar.loadcsvdata(self.data, projectdir = self.dirs['projectdir'])
+        self.loadthedata()
         self.filterthedata()
-        
         print('data reloaded')
-        print(time.perf_counter())    
+        print(time.perf_counter())  
         
+    def auto_load_data(self):
+        if self.handles['plot_autorefresh'].isChecked():
+            self.timer.start()
+        else:
+            self.timer.stop()
+            
     def filterthedata(self,lastselected = ' '):
         filterorder = ['project','experiment','setup','session','subject','experimenter']
-        self.data_now = self.data 
-        for filternow in filterorder:
-            filterstring = str(self.handles['filter_'+filternow].currentText())
-            if not re.findall('all',filterstring):
-                self.data_now = self.data_now[self.data_now[filternow] == filterstring]
-        self.handles['axes1'].plot_licks_and_rewards(self.data_now,self.handles)
-        self.handles['axes2'].plot_bias(self.data_now,self.handles)
+        if type(self.data) == pd.DataFrame:
+            self.data_now = self.data 
+            for filternow in filterorder:
+                filterstring = str(self.handles['filter_'+filternow].currentText())
+                if not re.findall('all',filterstring):
+                    self.data_now = self.data_now[self.data_now[filternow] == filterstring]
+            self.handles['axes1'].plot_licks_and_rewards(self.data_now,self.handles)
+            self.handles['axes2'].plot_bias(self.data_now,self.handles)
 # =============================================================================
 #         data = self.data 
 #         handlenames = self.handles.keys()
@@ -85,35 +121,41 @@ class App(QDialog):
         layout = QGridLayout()
         self.handles['filter_project'] = QComboBox(self)
         self.handles['filter_project'].addItem('all projects')
-        self.handles['filter_project'].addItems(self.data['project'].unique())
+        print(self.alldirs['projectnames'])
+        self.handles['filter_project'].addItems(self.alldirs['projectnames'])
         self.handles['filter_project'].currentIndexChanged.connect(lambda: self.filterthedata('filter_project'))
         self.handles['filter_experiment'] = QComboBox(self)
         self.handles['filter_experiment'].addItem('all experiments')
-        self.handles['filter_experiment'].addItems(self.data['experiment'].unique())
+        self.handles['filter_experiment'].addItems(self.alldirs['experimentnames'])
         self.handles['filter_experiment'].currentIndexChanged.connect(lambda: self.filterthedata('filter_experiment'))
         self.handles['filter_setup'] = QComboBox(self)
         self.handles['filter_setup'].addItem('all setups')
-        self.handles['filter_setup'].addItems(self.data['setup'].unique())
+        self.handles['filter_setup'].addItems(self.alldirs['setupnames'])
         self.handles['filter_setup'].currentIndexChanged.connect(lambda: self.filterthedata('filter_setup'))
         self.handles['filter_session'] = QComboBox(self)
         self.handles['filter_session'].addItem('all sessions')
-        self.handles['filter_session'].addItems(self.data['session'].unique())
+        self.handles['filter_session'].addItems(self.alldirs['sessionnames'])
         self.handles['filter_session'].currentIndexChanged.connect(lambda: self.filterthedata('filter_session'))
+        
+        self.handles['load_the_data'] = QPushButton('Load the data')
+        self.handles['load_the_data'].clicked.connect(self.loadthedata)
+        
         self.handles['filter_subject'] = QComboBox(self)
         self.handles['filter_subject'].addItem('all subjects')
-        self.handles['filter_subject'].addItems(self.data['subject'].unique())
+        #self.handles['filter_subject'].addItems(self.data['subject'].unique())
         self.handles['filter_subject'].currentIndexChanged.connect(lambda: self.filterthedata('filter_subject'))
         self.handles['filter_experimenter'] = QComboBox(self)
         self.handles['filter_experimenter'].addItem('all experimenters')
-        self.handles['filter_experimenter'].addItems(self.data['experimenter'].unique())
+        #self.handles['filter_experimenter'].addItems(self.data['experimenter'].unique())
         self.handles['filter_experimenter'].currentIndexChanged.connect(lambda: self.filterthedata('filter_experimenter'))
         
         layout.addWidget(self.handles['filter_project'] ,0,0)
         layout.addWidget(self.handles['filter_experiment'],0,1)
         layout.addWidget(self.handles['filter_setup'],0,2)
         layout.addWidget(self.handles['filter_session'],0,3)
-        layout.addWidget(self.handles['filter_subject'],0,4)
-        layout.addWidget(self.handles['filter_experimenter'],0,5)
+        layout.addWidget(self.handles['load_the_data'],0,4)
+        layout.addWidget(self.handles['filter_subject'],0,5)
+        layout.addWidget(self.handles['filter_experimenter'],0,6)
         self.horizontalGroupBox_filter.setLayout(layout)
         
         self.horizontalGroupBox_axes = QGroupBox("plots")
@@ -128,13 +170,39 @@ class App(QDialog):
         layout_plot_settings = QGridLayout()
         self.handles['plot_timeback'] = QLineEdit(self)
         self.handles['plot_timeback'].setText('Time back to plot (seconds)')
+        self.handles['plot_timeback'].returnPressed.connect(self.filterthedata)
         layout_plot_settings.addWidget(self.handles['plot_timeback'],0,0)
         
         self.handles['plot_timeback_runningwindow'] = QLineEdit(self)
         self.handles['plot_timeback_runningwindow'].setText('Number of segments in bias plot (integer)')
+        self.handles['plot_timeback_runningwindow'].returnPressed.connect(self.filterthedata)
         layout_plot_settings.addWidget(self.handles['plot_timeback_runningwindow'],0,1)
-        self.horizontalGroupBox_plot_settings.setLayout(layout_plot_settings)
         
+        self.handles['plot_autorefresh'] = QCheckBox(self)
+        self.handles['plot_autorefresh'].setText('auto refresh data')
+        layout_plot_settings.addWidget(self.handles['plot_autorefresh'],0,2)
+        self.handles['plot_autorefresh'].stateChanged.connect(self.auto_load_data)
+        self.horizontalGroupBox_plot_settings.setLayout(layout_plot_settings)
+    
+    def updateUI(self): # update the other qcomboboxes as well!!!
+        currtext = self.handles['filter_subject'].currentText()
+        self.handles['filter_subject'].clear()
+        self.handles['filter_subject'].addItem('all subjects')
+        if type(self.data) == pd.DataFrame:
+            self.handles['filter_subject'].addItems(self.data['subject'].unique())
+            
+            idx = self.handles['filter_subject'].findText(currtext)
+            if idx != -1:
+                self.handles['filter_subject'].setCurrentIndex(idx)
+                
+        currtext = self.handles['filter_subject'].currentText()
+        self.handles['filter_experimenter'].clear()
+        self.handles['filter_experimenter'].addItem('all experimenters')
+        if type(self.data) == pd.DataFrame:
+            self.handles['filter_experimenter'].addItems(self.data['experimenter'].unique())
+            idx = self.handles['filter_experimenter'].findText(currtext)
+            if idx != -1:
+                self.handles['filter_experimenter'].setCurrentIndex(idx)
         
 class PlotCanvas(FigureCanvas):
 
@@ -150,48 +218,12 @@ class PlotCanvas(FigureCanvas):
                 QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
         #self.plot()
-
-    def minethedata(self,data):
-        idxes = dict()
-        times = dict()
-        values = dict()
-        idxes['lick_L'] = data['var:WaterPort_L_ch_in'] == data['+INFO']
-        times['lick_L'] = data['PC-TIME'][idxes['lick_L']]
-        idxes['choice_L'] = (data['MSG'] == 'Choice_L') & (data['TYPE'] == 'TRANSITION')
-        times['choice_L'] = data['PC-TIME'][idxes['choice_L']]
-        idxes['reward_L'] = (data['MSG'] == 'Reward_L') & (data['TYPE'] == 'TRANSITION')
-        times['reward_L'] = data['PC-TIME'][idxes['reward_L']]
-        idxes['lick_R'] = data['var:WaterPort_R_ch_in'] == data['+INFO']
-        times['lick_R'] = data['PC-TIME'][idxes['lick_R']]
-        idxes['choice_R'] = (data['MSG'] == 'Choice_R') & (data['TYPE'] == 'TRANSITION')
-        times['choice_R'] = data['PC-TIME'][idxes['choice_R']]
-        idxes['reward_R'] = (data['MSG'] == 'Reward_R') & (data['TYPE'] == 'TRANSITION')
-        times['reward_R'] = data['PC-TIME'][idxes['reward_R']]
-        idxes['trialstart'] = data['TYPE'] == 'TRIAL'
-        times['trialstart'] = data['PC-TIME'][idxes['trialstart']]
-        idxes['trialend'] = data['TYPE'] == 'END-TRIAL'
-        times['trialend'] = data['PC-TIME'][idxes['trialend']]
-        idxes['GoCue'] = (data['MSG'] == 'GoCue') & (data['TYPE'] == 'TRANSITION')
-        times['GoCue'] = data['PC-TIME'][idxes['GoCue']]
-        
-        idxes['reward_p_L'] = idxes['GoCue']
-        times['reward_p_L'] = data['PC-TIME'][idxes['reward_p_L']]
-        values['reward_p_L'] = data['reward_p_L'][idxes['reward_p_L']]
-        
-        idxes['reward_p_R'] = idxes['GoCue']
-        times['reward_p_R'] = data['PC-TIME'][idxes['reward_p_R']]
-        values['reward_p_R'] = data['reward_p_R'][idxes['reward_p_R']]
-        
-        idxes['p_reward_ratio'] = idxes['GoCue']
-        times['p_reward_ratio'] = times['reward_p_R']
-        values['p_reward_ratio'] = values['reward_p_R'] / (values['reward_p_R']+ values['reward_p_L'])
-        
-        return times, idxes, values
     
     def plot_licks_and_rewards(self,data = [],handles = []):
-        if type(data) == pd.core.frame.DataFrame:
-            times,idxes, values = self.minethedata(data)
-            if  handles and handles['plot_timeback'].text().isnumeric():
+        self.axes.cla()
+        if type(data) == pd.core.frame.DataFrame and len(data) > 0:
+            times,idxes, values = behavior_rozmar.minethedata(data)
+            if  handles and handles['plot_timeback'].text().isnumeric() and int(handles['plot_timeback'].text()) > 0:
                 alltimes = []
                 for timeskey in times.keys(): # finding endtime
                    if len(alltimes) > 0:
@@ -222,8 +254,9 @@ class PlotCanvas(FigureCanvas):
             self.draw()
             
     def plot_bias(self,data = [],handles = []):
-        if type(data) == pd.core.frame.DataFrame:
-            times,idxes, values = self.minethedata(data)
+        self.axes.cla()
+        if type(data) == pd.core.frame.DataFrame and len(data) > 0:
+            times,idxes, values = behavior_rozmar.minethedata(data)
             alltimes = []       
             for timeskey in times.keys(): # finding endtime and starttime
                if len(alltimes) > 0:
@@ -232,7 +265,7 @@ class PlotCanvas(FigureCanvas):
                    alltimes = times[timeskey]
             startime = min(alltimes) 
             endtime = max(alltimes)
-            if  handles and handles['plot_timeback'].text().isnumeric():
+            if  handles and handles['plot_timeback'].text().isnumeric() and int(handles['plot_timeback'].text()) > 0:
                 startime = endtime - pd.to_timedelta(int(handles['plot_timeback'].text()),'s')
 # =============================================================================
 #                 print(startime)
