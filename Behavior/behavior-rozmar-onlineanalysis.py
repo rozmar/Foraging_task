@@ -15,7 +15,7 @@ import time as time
 from datetime import datetime
 
 
-defpath = '/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects' #'C:\\Users\\labadmin\\Documents\\Pybpod\\Projects'#''/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'#
+defpath = 'C:\\Users\\labadmin\\Documents\\Pybpod\\Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects' '/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Data/Behavior/Projects'#'/home/rozmar/Network/BehaviorRig/Behavroom-Stacked-2/labadmin/Documents/Pybpod/Projects'#
 class App(QDialog):
     def __init__(self):
         super().__init__()
@@ -37,7 +37,7 @@ class App(QDialog):
         self.timer.timeout.connect(self.reloadthedata) # each time timer counts a second, call self.blink
         
     def loaddirectorystructure(self):
-        dirstructure, projectnames, experimentnames, setupnames, sessionnames = behavior_rozmar.loaddirstucture(projectdir = defpath)
+        dirstructure, projectnames, experimentnames, setupnames, sessionnames = behavior_rozmar.loaddirstucture()
         self.dirstruct = dirstructure
         self.alldirs = dict()
         self.alldirs['projectnames'] = projectnames
@@ -64,7 +64,7 @@ class App(QDialog):
                                                 setupnames_needed = selected['setup'],
                                                 sessionnames_needed = selected['session'])
         self.updateUI()
-        print('data reloaded')
+        #print('data reloaded')
         #print(time.perf_counter())
     
     @pyqtSlot()    
@@ -121,7 +121,7 @@ class App(QDialog):
         layout = QGridLayout()
         self.handles['filter_project'] = QComboBox(self)
         self.handles['filter_project'].addItem('all projects')
-        print(self.alldirs['projectnames'])
+        #print(self.alldirs['projectnames'])
         self.handles['filter_project'].addItems(self.alldirs['projectnames'])
         self.handles['filter_project'].currentIndexChanged.connect(lambda: self.filterthedata('filter_project'))
         self.handles['filter_experiment'] = QComboBox(self)
@@ -218,12 +218,49 @@ class PlotCanvas(FigureCanvas):
                 QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
         #self.plot()
+
+    def minethedata(self,data):
+        idxes = dict()
+        times = dict()
+        values = dict()
+        idxes['lick_L'] = data['var:WaterPort_L_ch_in'] == data['+INFO']
+        times['lick_L'] = data['PC-TIME'][idxes['lick_L']]
+        idxes['choice_L'] = (data['MSG'] == 'Choice_L') & (data['TYPE'] == 'TRANSITION')
+        times['choice_L'] = data['PC-TIME'][idxes['choice_L']]
+        idxes['reward_L'] = (data['MSG'] == 'Reward_L') & (data['TYPE'] == 'TRANSITION')
+        times['reward_L'] = data['PC-TIME'][idxes['reward_L']]
+        idxes['lick_R'] = data['var:WaterPort_R_ch_in'] == data['+INFO']
+        times['lick_R'] = data['PC-TIME'][idxes['lick_R']]
+        idxes['choice_R'] = (data['MSG'] == 'Choice_R') & (data['TYPE'] == 'TRANSITION')
+        times['choice_R'] = data['PC-TIME'][idxes['choice_R']]
+        idxes['reward_R'] = (data['MSG'] == 'Reward_R') & (data['TYPE'] == 'TRANSITION')
+        times['reward_R'] = data['PC-TIME'][idxes['reward_R']]
+        idxes['trialstart'] = data['TYPE'] == 'TRIAL'
+        times['trialstart'] = data['PC-TIME'][idxes['trialstart']]
+        idxes['trialend'] = data['TYPE'] == 'END-TRIAL'
+        times['trialend'] = data['PC-TIME'][idxes['trialend']]
+        idxes['GoCue'] = (data['MSG'] == 'GoCue') & (data['TYPE'] == 'TRANSITION')
+        times['GoCue'] = data['PC-TIME'][idxes['GoCue']]
+        
+        idxes['reward_p_L'] = idxes['GoCue']
+        times['reward_p_L'] = data['PC-TIME'][idxes['reward_p_L']]
+        values['reward_p_L'] = data['reward_p_L'][idxes['reward_p_L']]
+        
+        idxes['reward_p_R'] = idxes['GoCue']
+        times['reward_p_R'] = data['PC-TIME'][idxes['reward_p_R']]
+        values['reward_p_R'] = data['reward_p_R'][idxes['reward_p_R']]
+        
+        idxes['p_reward_ratio'] = idxes['GoCue']
+        times['p_reward_ratio'] = times['reward_p_R']
+        values['p_reward_ratio'] = values['reward_p_R'] / (values['reward_p_R']+ values['reward_p_L'])
+        
+        return times, idxes, values
     
     def plot_licks_and_rewards(self,data = [],handles = []):
         self.axes.cla()
         if type(data) == pd.core.frame.DataFrame and len(data) > 0:
-            times,idxes, values = behavior_rozmar.minethedata(data)
-            if  handles and handles['plot_timeback'].text().isnumeric() and int(handles['plot_timeback'].text()) > 0:
+            times,idxes, values = self.minethedata(data)
+            if  handles and handles['plot_timeback'].text().isnumeric():
                 alltimes = []
                 for timeskey in times.keys(): # finding endtime
                    if len(alltimes) > 0:
@@ -231,6 +268,7 @@ class PlotCanvas(FigureCanvas):
                    else:
                        alltimes = times[timeskey]
                 endtime = max(alltimes)
+                #startime = endtime - int(handles['plot_timeback'].text())*np.timedelta64(1,'s')
                 for timeskey in times.keys():
                     timediffs = (times[timeskey] - endtime).to_numpy()
                     neededidx = (timediffs/np.timedelta64(1,'s')+int(handles['plot_timeback'].text()))>0
@@ -244,19 +282,21 @@ class PlotCanvas(FigureCanvas):
             
             self.axes.plot(times['lick_L'], np.zeros(len(times['lick_L'])), 'k|')
             self.axes.plot(times['lick_R'], np.zeros(len(times['lick_R']))+1, 'k|')
-            self.axes.plot(times['choice_L'], np.zeros(len(times['choice_L']))+.2, 'go', markerfacecolor = (1, 1, 1, 1))
-            self.axes.plot(times['choice_R'], np.zeros(len(times['choice_R']))+.8, 'go',markerfacecolor = (1, 1, 1, 1))
+            self.axes.plot(times['choice_L'], np.zeros(len(times['choice_L']))+.1, 'go', markerfacecolor = (1, 1, 1, 1))
+            self.axes.plot(times['choice_R'], np.zeros(len(times['choice_R']))+.9, 'go',markerfacecolor = (1, 1, 1, 1))
             self.axes.plot(times['reward_L'], np.zeros(len(times['reward_L']))+.2, 'go', markerfacecolor = (0, 1, 0, 1))
             self.axes.plot(times['reward_R'], np.zeros(len(times['reward_R']))+.8, 'go',markerfacecolor = (0, 1, 0, 1))
             self.axes.set_title('Lick and reward history')
             self.axes.set_yticks([0,1])
             self.axes.set_yticklabels(['Left', 'Right'])
+            #if  handles and handles['plot_timeback'].text().isnumeric():
+                #self.axes.set_xlim(startime,endtime)
             self.draw()
             
     def plot_bias(self,data = [],handles = []):
         self.axes.cla()
         if type(data) == pd.core.frame.DataFrame and len(data) > 0:
-            times,idxes, values = behavior_rozmar.minethedata(data)
+            times,idxes, values = self.minethedata(data)
             alltimes = []       
             for timeskey in times.keys(): # finding endtime and starttime
                if len(alltimes) > 0:
@@ -265,7 +305,7 @@ class PlotCanvas(FigureCanvas):
                    alltimes = times[timeskey]
             startime = min(alltimes) 
             endtime = max(alltimes)
-            if  handles and handles['plot_timeback'].text().isnumeric() and int(handles['plot_timeback'].text()) > 0:
+            if  handles and handles['plot_timeback'].text().isnumeric():
                 startime = endtime - pd.to_timedelta(int(handles['plot_timeback'].text()),'s')
 # =============================================================================
 #                 print(startime)
@@ -289,7 +329,7 @@ class PlotCanvas(FigureCanvas):
             
             steptime = (endtime-startime)/numerofpoints
             timerange = pd.date_range(start = startime, end = endtime, periods = numerofpoints*10) #freq = 's' *10
-            print(startime , endtime)
+            #print(startime , endtime)
             lick_left_num = np.zeros(len(timerange))
             lick_right_num  = np.zeros(len(timerange))
             reward_left_num = np.zeros(len(timerange))
@@ -311,6 +351,7 @@ class PlotCanvas(FigureCanvas):
             self.axes.plot(times['reward_p_R'][idxes], values['reward_p_R'][idxes], 'r-',label = 'Reward probability Right')
             
             self.axes.set_ylim(-.1,1.1)
+            #self.axes.set_xlim(startime,endtime)
             self.axes.set_yticks([0,1])
             self.axes.set_yticklabels(['Left', 'Right'])
             #self.axes.legend()
